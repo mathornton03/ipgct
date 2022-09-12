@@ -384,8 +384,8 @@ int main(int argc, char ** argv){
 
     granger_F_pvals = ipgct(spts,gcs);
 
-    //cout << "granger_F_pvals: " << endl; 
-    //cout << granger_F_pvals << endl;
+    cout << "granger_F_pvals: " << endl; 
+    cout << granger_F_pvals << endl;
     float dist_from_no_sig = 1- ((spts.size()*spts.size() - granger_F_pvals.sum())/(spts.size()*spts.size()));
     cout << "Granger Clustering Ratio: (1 indicates no granger causal-relations) - " << dist_from_no_sig << endl;
 }
