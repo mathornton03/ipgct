@@ -21,15 +21,18 @@ struct ols_results OLS(vector<vector<float>> lm, bool estint);
 void displayHead();
 void printTTestResultsWNames(struct ols_results osr, vector<string> effectnames);
 float printGrangerCausalConclustion(struct ols_results solo, struct ols_results crossed);
+Eigen::VectorXd WLS_iterable(Eigen::MatrixXd X, Eigen::VectorXd Y, Eigen::VectorXd W);
 
 struct gct_settings{
     string infilename;
     string outfilename; 
     int subseqsize;
     bool genrand = false;
+    bool binTS = false;
     string routfilename; 
     int routseqsize;
     int maxlags;
+    float tolerance = 0.0001; 
 };
 
 struct ols_results{
@@ -48,22 +51,30 @@ struct ols_results{
     float p_value;
 };
 
+struct wls_results : ols_results {
+    Eigen::VectorXd W;
+};
+
+struct irls_results : wls_results{
+    float numiter;
+};
+
 void displayHead(){
     cout << "       Internal Pairwise Granger Causality Testing (IPGCT)   " << endl;
-    cout << "             For Real Valued Gaussian Time Series            " << endl;
+    cout << "               For Time Series of Different Kinds            " << endl;
     cout << "          A Test for Internal Serial Correlation in TS       " << endl;
     cout << "                       ( Thornton 2022 )                     " << endl;
-    cout << "                          Version 1.0                        " << endl;
+    cout << "                          Version 1.1                        " << endl;
     cout << "                                                             " << endl;
 }
 
 struct gct_settings parseargs(int argc, char ** argv){
-    if (argc != 5 && argc != 8){
+    /*if (argc != 5 && argc != 8){
         cerr << "Attempted Usage: " << endl; 
         cerr << argv << endl;
         cerr << "Error: incorrect usage." << endl << endl;
         displayHelp(argc, argv);
-    }
+    }*/
     struct gct_settings gctset;
     for (int i = 1; i < argc; i++){
         if (i == 1){
@@ -75,10 +86,17 @@ struct gct_settings parseargs(int argc, char ** argv){
             gctset.subseqsize = stoi(argv[i]);
         } else if (i == 4){
             gctset.maxlags = stoi(argv[i]);
-        }if (string(argv[i]) == "-G") {
+        }else if (string(argv[i]) == "-G" | string(argv[i]) == "-g" | string(argv[i]) == "--GEN") {
             gctset.genrand = true;
             gctset.routfilename = argv[i+1];
             gctset.routseqsize = stoi(argv[i+2]);
+        } else if (string(argv[i]) == "-B" | string(argv[i]) == "-b" | string(argv[i]) == "--BERN"){
+            gctset.binTS = true;
+        } else if (string(argv[i]) == "-T" | string(argv[i]) == "-t" | string(argv[i]) == "--TOL"){
+            gctset.tolerance = stof(argv[i+1]);
+        } else if (string(argv[i]) == "-H" | string(argv[i]) == "-h" | string(argv[i]) == "--HELP"){
+            displayHelp(argc, argv);
+            exit(1);
         }
     }
     if (gctset.genrand){
@@ -93,7 +111,9 @@ struct gct_settings parseargs(int argc, char ** argv){
 void displayHelp(int argc, char ** argv){
     cout << "                                                             " << endl;
     cout << " usage: " << argv[0] << " time_series.txt outputfilename.txt " << endl;
-    cout << "                          SSSIZE MXLAGS [-G] <RFILEN> <RS>   " << endl;
+    cout << "                          SSSIZE MXLAGS [-b/-B/-BERN]        " << endl; 
+    cout << "                          [-g/-G/--GEN] <RFILEN> <RS>        " << endl;
+    cout << "                          [-t/-T/--TOL] <RTOLE = 0.0001>     " << endl;
     cout << "                                                             " << endl;
     cout << " time_series.txt:  the location of a time series file, which " << endl;
     cout << "   contains the subset of values that will be used in the    " << endl; 
@@ -109,22 +129,80 @@ void displayHelp(int argc, char ** argv){
     cout << " MXLAGS: The number of AR lags to try in each substring fit  " << endl;
     cout << "                                                             " << endl; 
     cout << " Optional Arguments:                                         " << endl; 
-    cout << "   [-G/-g/-GEN] <RFILEN>: generate a random TS file for test " << endl; 
+    cout << "                                                             " << endl; 
+    cout << "   [-B/-b/--BERN]: Assume the input Time Series to be on a   " << endl;
+    cout << "                  Binary support, and use the standard       " << endl;
+    cout << "                  Bernoulli Trials form of the General Linear" << endl;
+    cout << "                  Model (Logistic Regression) instead of the " << endl;
+    cout << "                  Standard Gaussian One.                     " << endl;
+    cout << "                                                             " << endl; 
+    cout << "   [-T/-t/--TOL] <RTOLE>: relative tolerance, stop iterating " << endl; 
+    cout << "                  under during the IRLS procedure of the test" << endl;
+    cout << "                  in the case of binary data (logistic       " << endl;
+    cout << "                  regression)                                " << endl;
+    cout << "                                                             " << endl; 
+    cout << "   [-G/-g/--GEN] <RFILEN>: generate a random TS file for test" << endl; 
     cout << "        RFILEN - File name for random output file.           " << endl; 
     cout << "        RS - Size of Random TS to be generated               " << endl;
+    cout << "                                                             " << endl;
     cout << "                                                             " << endl;
     exit(1);
 }
 
-struct ols_results OLS(vector<vector<float>> lm, bool estint){
-
-    struct ols_results retres;
-
+struct wls_results WLS(vector<vector<float>> lm, vector<float> w, bool estint){
+    struct wls_results retres; 
     Eigen::VectorXd Y(lm[0].size());
     for (int i = 0; i < lm[0].size(); i++){
         Y(i) = lm[0][i];
     }
+    Eigen::MatrixXd X(lm[0].size(),lm.size()-1);
 
+    if (estint){
+        X = Eigen::MatrixXd(lm[0].size(), lm.size());
+    }
+
+    for (int i = 1; i <= (lm[i].size()-1); i++ ){
+        for (int j = 0; j < lm[i].size(); j++){
+            X(j,i) = lm[i][j];
+        }
+    }
+    if (estint){
+        for (int j = 0; j < lm[0].size(); j ++){
+            X(j,0) = 1;
+        }
+    }
+
+    Eigen::MatrixXd W(w.size(),w.size());
+    for (int i = 0; i < w.size(); i++){
+        W(i,i) = w[i];
+    }
+
+    Eigen::VectorXd beta = WLS_iterable(X,Y,W);
+
+    retres.W = W;
+    retres.beta = beta;
+    return(retres);
+}
+
+Eigen::VectorXd WLS_iterable(Eigen::MatrixXd X, Eigen::VectorXd Y, Eigen::VectorXd W){
+    Eigen::MatrixXd tX = X.transpose();
+    Eigen::MatrixXd WX = W * X; 
+    Eigen::MatrixXd tXWX =  tX * WX; 
+    Eigen::MatrixXd tXWY = tX * W * Y;
+    Eigen::MatrixXd tXWXi = tXWX.inverse();
+    Eigen::VectorXd betahat = tXWXi * tXWY;
+    return(betahat);
+}
+
+struct irls_results IRLS(vector<vector<float>> lm, gct_settings gcs){
+
+}
+struct ols_results OLS(vector<vector<float>> lm, bool estint){
+    struct ols_results retres;
+    Eigen::VectorXd Y(lm[0].size());
+    for (int i = 0; i < lm[0].size(); i++){
+        Y(i) = lm[0][i];
+    }
     // cout << "X of size " << lm1[0].size() << " by " << (lm1.size()-1) << endl;
     Eigen::MatrixXd X(lm[0].size(),lm.size()-1);
     
@@ -285,6 +363,10 @@ float printGrangerCausalConclusion(struct ols_results solo, struct ols_results c
     return(p_value);
 }
 
+Eigen::MatrixXd ipgct_logistic(vector<vector<float>> spts, struct gct_settings gcs){
+    Eigen::MatrixXd granger_F_pvals(spts.size(),spts.size());
+    return(granger_F_pvals);
+}
 Eigen::MatrixXd ipgct(vector<vector<float>> spts, struct gct_settings gcs){
     
     Eigen::MatrixXd granger_F_pvals(spts.size(),spts.size());
@@ -382,12 +464,17 @@ int main(int argc, char ** argv){
 
     Eigen::MatrixXd granger_F_pvals(spts.size(),spts.size());
 
-    granger_F_pvals = ipgct(spts,gcs);
-
+    if (!gcs.binTS){
+        granger_F_pvals = ipgct(spts,gcs);
+    } else {
+        cout << "Binary input data, using Logistic Regression (IRLS)" << endl;
+       // granger_F_pvals = ipgct_logistic(spts,gcs);
+       return(0);
+    }
     cout << "granger_F_pvals: " << endl; 
     cout << granger_F_pvals << endl;
     float dist_from_no_sig = 1- ((spts.size()*spts.size() - granger_F_pvals.sum())/(spts.size()*spts.size()));
-    cout << "Granger Clustering Ratio: (1 indicates no granger causal-relations) - " << dist_from_no_sig << endl;
+    cout << "Granger Clustering Ratio: (1 indicates complete granger causal-relation) - " << dist_from_no_sig << endl;
 }
 
 vector<vector<float>> getLagsMatrix(vector<float> values, int lags){
