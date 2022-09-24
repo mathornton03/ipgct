@@ -18,10 +18,12 @@ void displayHelp(int argc, char ** argv);
 void genRandTSFile(string ofilename, int seriesize);
 vector<vector<float>> getLagsMatrix(vector<float> values, int lags);
 struct ols_results OLS(vector<vector<float>> lm, bool estint);
+struct irls_results IRLS_logit(vector<vector<float>> lm, bool estint);
 void displayHead();
 void printTTestResultsWNames(struct ols_results osr, vector<string> effectnames);
-float printGrangerCausalConclustion(struct ols_results solo, struct ols_results crossed);
+float printGrangerCausalConclusion(struct ols_results solo, struct ols_results crossed);
 Eigen::VectorXd WLS_iterable(Eigen::MatrixXd X, Eigen::VectorXd Y, Eigen::VectorXd W);
+Eigen::VectorXd calculateLogisticLink(Eigen::MatrixXd X, Eigen::VectorXd beta);
 
 struct gct_settings{
     string infilename;
@@ -33,6 +35,7 @@ struct gct_settings{
     int routseqsize;
     int maxlags;
     float tolerance = 0.0001; 
+    int maxiter = 1000;
 };
 
 struct ols_results{
@@ -193,10 +196,66 @@ Eigen::VectorXd WLS_iterable(Eigen::MatrixXd X, Eigen::VectorXd Y, Eigen::Vector
     Eigen::VectorXd betahat = tXWXi * tXWY;
     return(betahat);
 }
-
-struct irls_results IRLS(vector<vector<float>> lm, gct_settings gcs){
-
+Eigen::VectorXd calculateLogisticLink(Eigen::MatrixXd X, Eigen::VectorXd beta){
+    Eigen::VectorXd yhat(X.rows());
+    Eigen::VectorXd xcur(X.cols());
+    float linkcur = 0;
+    for (int i = 0; i < X.rows(); i++){
+        xcur = X(i,Eigen::all);
+        linkcur = xcur * beta;
+        linkcur *= -1; 
+        yhat(i) = 1 / (1 + exp(linkcur));
+    }
+    return(yhat);
 }
+struct irls_results IRLS_logit(vector<vector<float>> lm, gct_settings gcs, 
+                                bool estint){
+    struct irls_results retres;
+    Eigen::VectorXd Y(lm[0].size());
+    for (int i = 0; i < lm[0].size(); i++){
+        Y(i) = lm[0][i];
+    }
+    Eigen::MatrixXd X(lm[0].size(), lm.size()-1);
+    if (estint) {
+        X = Eigen::MatrixXd(lm[0].size(), lm.size());
+    }
+    for (int i = 1; i <= (lm.size()-1); i++){
+        for (int j = 0; j <= (lm.size()-1); j++){
+            X(j,i) = lm[i][j];
+        }
+    }
+    if (estint){
+        for(int i = 0; i < lm[0].size(); i++){
+            X(i,0) = 1;
+        }
+    }
+    struct ols_results ifit = initfit(lm, estint);
+    float relerr = 1;
+    int iter = 1;
+    Eigen::VectorXd betcur = ifit.beta;
+    Eigen::VectorXd betprev = ifit.beta;
+    Eigen::VectorXd yhatcur = calculateLogisticLink(X,betcur);
+    Eigen::VectorXd curresid = (Y.array() - yhatcur.array());
+    Eigen::VectorXd hprieta = yhatcur.array() * (1-yhatcur.array());
+    Eigen::VectorXd Zcur = (Y.array()-yhatcur.array())/(hprieta.array());
+    curresid = curresit.array().square();
+    struct wls_results curwlsres;
+    while(relerr >= gcs.tolerance && iter <= gcs.maxiter){
+        betprev = betcur;
+        betcur = betcur.array()+WLS_iterable(X, Zcur, hprieta).array();
+        relerr = ((betcur.array()-betprev.array()).square().sum());
+        yhatcur = calculateLogisticLink(X,betcur);
+        curresid = (Y.array() - yhatcur.array());
+        hprieta = yhatcur.array() * (1-yhatcur.array());
+        Zcur = (Y.array()-yhatcur.array())/(hprieta.array());
+        iter++;
+    }
+    retres.beta = betcur;
+    return(retres);
+}
+
+
+
 struct ols_results OLS(vector<vector<float>> lm, bool estint){
     struct ols_results retres;
     Eigen::VectorXd Y(lm[0].size());
@@ -365,8 +424,20 @@ float printGrangerCausalConclusion(struct ols_results solo, struct ols_results c
 
 Eigen::MatrixXd ipgct_logistic(vector<vector<float>> spts, struct gct_settings gcs){
     Eigen::MatrixXd granger_F_pvals(spts.size(),spts.size());
+    float tol = gcs.tolerance;
+    float err = 1;
+    int obsperseq = gcs.subseqsize - (gcs.maxlags-1);
+    Eigen::VectorXd weightinitial(obsperseq);
+    struct ols_results = OLS()
+    for (int i = 0; i < obsperseq; i++){
+        weightinitial(i) = 1;
+    }
+    while(err > tol){
+
+    }
     return(granger_F_pvals);
 }
+
 Eigen::MatrixXd ipgct(vector<vector<float>> spts, struct gct_settings gcs){
     
     Eigen::MatrixXd granger_F_pvals(spts.size(),spts.size());
@@ -468,6 +539,7 @@ int main(int argc, char ** argv){
         granger_F_pvals = ipgct(spts,gcs);
     } else {
         cout << "Binary input data, using Logistic Regression (IRLS)" << endl;
+
        // granger_F_pvals = ipgct_logistic(spts,gcs);
        return(0);
     }
