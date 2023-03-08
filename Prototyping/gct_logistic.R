@@ -1,49 +1,48 @@
-gct_logistic <- function(X,Y,k = 5){
-  data_xy <- Y[1:(length(Y)-(k-1))]
-  for (i in 2:k){
-    data_xy <- cbind(data_xy,Y[i:(length(Y)-(k-i))])
-    data_xy <- cbind(data_xy,X[i:(length(X)-(k-i))])
-  }
+rm(list = ls())
 
-  data_y <- Y[1:(length(Y)-(k-1))]
-  for (i in 2:k){
-    data_y <- cbind(data_y, Y[i:(length(Y)-(k-i))])
-  }
+X <- rbinom(100, 1, 0.5)
+Y <- rbinom(100, 1, 0.5)
+k <- 5
 
-  colnames(data_xy)[1] <- "Y"
-  data_xy <- data.frame(data_xy)
-
-  glm(Y~.,data=data,family=binomial(link="logit")) -> full_fit
-  full_llik <- sum(log(1+exp(predict(full_fit))))
-
-  colnames(data_y)[1] <- "Y"
-  data_y <- data.frame(data_y)
-
-  glm(Y~., data=data_y,family=binomial(link="logit")) -> null_fit
-  null_llik <- sum(log(1+exp(predict(null_fit))))
-
-  lr_stat <- -2 * (null_llik - full_llik)
-  pval <- pchisq(lr_stat,k,lower.tail=FALSE)
-  return(pval)
+lagged_xy <- Y[1:(length(Y) - (k - 1))]
+for (i in (2:k)){
+    lagged_xy <- cbind(lagged_xy, Y[i:(length(Y) - (k - i))])
+    lagged_xy <- cbind(lagged_xy, X[i:(length(X) - (k - i))])
 }
-set.seed(123)
-X <- rbinom(1000,1,0.5)
-Y <- rbinom(1000,1,0.5)
+lagged_xy <- data.frame(lagged_xy)
 
-gct_logistic(X, Y, 10) -> pval_random
+lagged_y <- Y[1:(length(Y) - (k - 1))]
+for (i in (2:k)){
+    lagged_y <- cbind(lagged_y, Y[i:(length(Y) - (k - i))])
+}
+lagged_y <- data.frame(lagged_y)
 
-set.seed(123)
-n <- 1000
+colnames(lagged_xy)[1] <- "Y"
+colnames(lagged_y)[1] <- "Y"
+
+full <- glm(Y ~ ., data = lagged_xy, family = binomial(link = "logit"))
+null <- glm(Y ~ ., data = lagged_y, family = binomial(link = "logit"))
+
+ll_full <- logLik(full)
+ll_null <- logLik(null)
+
+ts <- -2 * (ll_full - ll_null)
+pchisq(ts, df = k-1, lower.tail = FALSE)
+
+lagged_x <- X[2:(length(X) - (k - 2))]
+for (i in (3:k)){
+    lagged_x <- cbind(lagged_x, X[i:(length(X) - (k - i))])
+}
+rnorm(k-1) -> beta
+ps <- apply(lagged_x, 1, function(x) { 1/(1+exp(-sum(x * beta))) })
+
+
+# Generate binary sequence Y such that X Granger-causes Y
 p <- 0.8
-
-# Generate binary sequence X
-X <- rbinom(n, 1, 0.5)
-
-# Generate binary sequence Y that is Granger caused by X
-Y <- rep(0, n)
+Y <- rep(0, 100)
 Y[1] <- X[1]
-for (i in 2:n) {
-  Y[i] <- rbinom(1, 1, p * X[i-1] + (1-p) * Y[i-1])
+for (i in 2:100) {
+  Y[i] <- rbinom(1, 1, ps[i-1])
 }
 
-gct_logistic(X, Y, 10) -> pval_caused
+
