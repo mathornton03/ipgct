@@ -53,18 +53,3 @@ logit_gct <- function(X, Y, K, sig_ly, sig_lxy){
     if(is.na(gct_pval)){ gct_pval <- 1}
     return(gct_pval)
 }
-
-
-n <- 100 # The size of the time series 
-p <- 0.5 # The proportion parameter (for uncorrelated series)
-
-# Some example binary time series sequences. 
-Y <- rbinom(n, 1, p)
-X <- rbinom(n, 1, p)
-
-# The maximum number of lags to try.
-K <- 10
-sig_ly <- 0.5 # significance level to keep lags of Y in model.
-sig_lxy <- 0.5 # significance level to keep lags of X in model.
-
-logit_gct(X, Y, K, sig_ly, sig_lxy)
