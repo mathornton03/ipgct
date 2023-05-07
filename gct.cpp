@@ -199,12 +199,14 @@ Eigen::VectorXd WLS_iterable(Eigen::MatrixXd X, Eigen::VectorXd Y, Eigen::Vector
 Eigen::VectorXd calculateLogisticLink(Eigen::MatrixXd X, Eigen::VectorXd beta){
     Eigen::VectorXd yhat(X.rows());
     Eigen::VectorXd xcur(X.cols());
-    float linkcur = 0;
+    Eigen::MatrixXd linkcur;
+    float link;
     for (int i = 0; i < X.rows(); i++){
         xcur = X(i,Eigen::all);
         linkcur = xcur * beta;
         linkcur *= -1; 
-        yhat(i) = 1 / (1 + exp(linkcur));
+        link = linkcur.value();
+        yhat(i) = 1 / (1 + exp(link));
     }
     return(yhat);
 }
@@ -238,7 +240,7 @@ struct irls_results IRLS_logit(vector<vector<float>> lm, gct_settings gcs,
     Eigen::VectorXd curresid = (Y.array() - yhatcur.array());
     Eigen::VectorXd hprieta = yhatcur.array() * (1-yhatcur.array());
     Eigen::VectorXd Zcur = (Y.array()-yhatcur.array())/(hprieta.array());
-    curresid = curresit.array().square();
+    curresid = curresid.array().square();
     struct wls_results curwlsres;
     while(relerr >= gcs.tolerance && iter <= gcs.maxiter){
         betprev = betcur;
