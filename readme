@@ -11,4 +11,4 @@ g++ -std=c++11 logisticRegression.cpp -o logistic_regression -larmadillo -lmlpac
 ./logistic_regression data.csv responses.csv
 
 # run logisticRegression.R
-
+Rscript logisticRegression.R

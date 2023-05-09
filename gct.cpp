@@ -82,7 +82,6 @@ struct gct_settings parseargs(int argc, char ** argv){
     for (int i = 1; i < argc; i++){
         if (i == 1){
             gctset.infilename = argv[i];
-            continue;
         } else if (i == 2){
             gctset.outfilename = argv[i];
         } else if (i == 3){
@@ -97,7 +96,7 @@ struct gct_settings parseargs(int argc, char ** argv){
             gctset.binTS = true;
         } else if (string(argv[i]) == "-T" | string(argv[i]) == "-t" | string(argv[i]) == "--TOL"){
             gctset.tolerance = stof(argv[i+1]);
-        } else if (string(argv[i]) == "-H" | string(argv[i]) == "-h" | string(argv[i]) == "--HELP"){
+        } if (string(argv[i]) == "-H" | string(argv[i]) == "-h" | string(argv[i]) == "--HELP"){
             displayHelp(argc, argv);
             exit(1);
         }
@@ -231,7 +230,7 @@ struct irls_results IRLS_logit(vector<vector<float>> lm, gct_settings gcs,
             X(i,0) = 1;
         }
     }
-    struct ols_results ifit = initfit(lm, estint);
+    struct ols_results ifit = OLS(lm, estint);
     float relerr = 1;
     int iter = 1;
     Eigen::VectorXd betcur = ifit.beta;
@@ -430,7 +429,7 @@ Eigen::MatrixXd ipgct_logistic(vector<vector<float>> spts, struct gct_settings g
     float err = 1;
     int obsperseq = gcs.subseqsize - (gcs.maxlags-1);
     Eigen::VectorXd weightinitial(obsperseq);
-    struct ols_results = OLS()
+    struct ols_results ini = OLS(spts,true);
     for (int i = 0; i < obsperseq; i++){
         weightinitial(i) = 1;
     }
@@ -528,6 +527,8 @@ int main(int argc, char ** argv){
     displayHead();
 
     bool estintercept = true;
+
+   
 
     struct gct_settings gcs = parseargs(argc,argv);
 
